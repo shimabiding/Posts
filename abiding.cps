@@ -28,6 +28,7 @@ const iOutput = createOutputVariable({ prefix: "I" }, xyzFormat);
 const jOutput = createOutputVariable({ prefix: "J" }, xyzFormat);
 const feedOutput = createOutputVariable({ prefix: "F" }, feedFormat);
 
+let gMotionModal;
 let pendingRadiusCompensation = -1;
 
 const RAPID = 0;
@@ -177,14 +178,12 @@ var onOpen = () => {
 
     writeln("%");
 
-    let currentTool = getToolTable().getTool(0);
-    //writeWords(currentTool.diameter ? `(wire diameter: ${currentTool.diameter})` : "");
-
     //writeln(capabilities.toString(2));
     // 上でビット演算を行い受け入れる加工タイプを限定している　そのビット演算結果の確認用Write
 }
 
 var onSection = () => {
+    pendingRadiusCompensation = -1;
     CLs = [];
     forceAny();
 
@@ -197,8 +196,11 @@ var onSection = () => {
 var onSectionEnd = () => {
     //CLs.forEach(CL => { writeln(JSON.stringify(CL)) });
 
-    let cuttingCLs = CLs.filter((CL) => CL.movement == MOVEMENT_LEAD_IN || CL.movement == MOVEMENT_FINISH_CUTTING || CL.movement == MOVEMENT_LEAD_OUT || CL.radiusCompensation != undefined);
-    let leadInFinished = false;
+    let leadInCL = CLs.filter((CL) => CL.movement == MOVEMENT_LEAD_IN);
+    pendingRadiusCompensation = -1;
+    ProcessCuttingLine(leadInCL[leadInCL.length - 1]);
+    
+    let cuttingCLs = CLs.filter((CL) => CL.movement == MOVEMENT_FINISH_CUTTING || CL.movement == MOVEMENT_LEAD_OUT || CL.radiusCompensation != undefined);
     pendingRadiusCompensation = -1;
     for (let i = 0; i < cuttingCLs.length; i++) {
         if (cuttingCLs[i].movement == MOVEMENT_LEAD_OUT) break;
@@ -211,11 +213,11 @@ var onSectionEnd = () => {
     leadOutCL[0].args.feed = 0;
     pendingRadiusCompensation = -1;
     ProcessCuttingLine(leadOutCL[0]);
-    pendingRadiusCompensation = -1;
-    //leadOutCL.forEach((CL) => { ProcessCuttingLine(CL); });
+    //writeln(JSON.stringify(leadOutCL));
 
-    writeBlock(mFormat.format(0));
     writeBlock(mFormat.format(91));
+    writeBlock(mFormat.format(0));
+
     forceMotion();
     if (!isLastSection()) writeBlock(gFormat.format(40), gFormat.format(1), initialPosition.x, initialPosition.y, feedOutput.format(800.));
 }

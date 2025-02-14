@@ -109,7 +109,7 @@ const ProcessLinear = (CL) => {
     const y = yOutput.format(CL.args.y);
     const f = GetFeed(CL.args.feed);
 
-    if (CL.movement == MOVEMENT_LEAD_IN) {
+    if (CL.movement == MOVEMENT_LEAD_IN || CL.movement == MOVEMENT_LINK_TRANSITION) {
         Preparing(x, y, f);
         return;
     }
@@ -154,6 +154,10 @@ const ProcessCircular = (CL) => {
 }
 
 const ProcessCuttingLine = (CL) => {
+    if (CL == undefined) {
+        writeln("(undefined)");
+        return;
+    }
     if (CL.radiusCompensation != undefined) {
         if (pendingRadiusCompensation == -1) pendingRadiusCompensation = CL.radiusCompensation;
         else error(`径補正保留中に新たに径補正を設定することはできません。pendingRadiusCompensationValue:  ${pendingRadiusCompensation}}`);
@@ -194,16 +198,16 @@ var onSection = () => {
 }
 
 var onSectionEnd = () => {
-    //CLs.forEach(CL => { writeln(JSON.stringify(CL)) });
+    CLs.forEach(CL => { writeln(JSON.stringify(CL)) });
 
     let leadInCL = CLs.filter((CL) => CL.movement == MOVEMENT_LEAD_IN);
     pendingRadiusCompensation = -1;
     ProcessCuttingLine(leadInCL[leadInCL.length - 1]);
     
-    let cuttingCLs = CLs.filter((CL) => CL.movement == MOVEMENT_FINISH_CUTTING || CL.movement == MOVEMENT_LEAD_OUT || CL.radiusCompensation != undefined);
+    let cuttingCLs = CLs.filter((CL) => CL.movement == MOVEMENT_LINK_TRANSITION || CL.movement == MOVEMENT_FINISH_CUTTING || CL.movement == MOVEMENT_LEAD_OUT || CL.radiusCompensation != undefined);
     pendingRadiusCompensation = -1;
     for (let i = 0; i < cuttingCLs.length; i++) {
-        if (cuttingCLs[i].movement == MOVEMENT_LEAD_OUT) break;
+        //if (cuttingCLs[i].movement == MOVEMENT_LEAD_OUT) break;
         //writeln(JSON.stringify(cuttingCLs[i]));
         ProcessCuttingLine(cuttingCLs[i]);
     }
@@ -227,7 +231,7 @@ var onClose = () => {
     writeBlock(mFormat.format(2));
     writeln("%");
     
-    //GenerateMovementTypeList();
+    GenerateMovementTypeList();
 }
 
 

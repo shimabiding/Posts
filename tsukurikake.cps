@@ -49,18 +49,18 @@ const forceAny = () => {
 
 const GetCL = (args) => {
     start = getCurrentPosition();
-    return { movement, args, start };
+    return { movement, args, start }; //startは円弧動作時の計算のために取得している
 }
 
 const GetFeed = (feed) => {
-    return feed ? feedOutput.format(feed) : "";
+    return feed ? feedOutput.format(feed) : ""; //feedに0が渡されたとき、0ではなく空を返させる Partingの処理で使用
 }
 
 var onLinear = (...args) => {
-    const [ x, y, z, feed ] = args;
+    const [ x, y, z, feed ] = args; //分割代入しているだけ
     const CL = GetCL({ x, y, z, feed });
     CL.type = LINEAR;
-    CLs.push(CL);
+    CLs.push(CL); //ツールパスに対応したEntryFuctionがInvokeされたときCLsにCLを積み上げる
 }
 
 var onCircular = (...args) => {
@@ -88,7 +88,7 @@ const ProcessLinear = (CL) => {
     const f = GetFeed(CL.args.feed);
 
     if (x || y) {
-        if (pendingRadiusCompensation >= 0) {
+        if (pendingRadiusCompensation >= 0) { //径補正が保留中であれば補正を処理し、保留を解除する
             switch (pendingRadiusCompensation) {
                 case RADIUS_COMPENSATION_LEFT:
                     writeBlock(gFormat.format(41), x, y, f);
@@ -109,12 +109,12 @@ const ProcessLinear = (CL) => {
 
 const ProcessCircular = (CL) => {
     if (pendingRadiusCompensation >= 0) {
-        writeln("ERROR: radius compensation not supported for circular motion");
+        writeln("エラー: 径補正モードの変更は直線動作時に行う必要があります");
         return;
     }
 
     if (CL.isFullCircle) {
-        writeln("ERROR: full circle not supported");
+        writeln("エラー: 円弧の動作は360°未満にする必要があります");
         return;
     }
 
@@ -134,10 +134,10 @@ const ProcessCuttingLine = (CL) => {
     }
     if (CL.radiusCompensation !== undefined) {
         if (pendingRadiusCompensation === -1) {
-            pendingRadiusCompensation = CL.radiusCompensation;
+            pendingRadiusCompensation = CL.radiusCompensation; //radiusCompensationが来た時、径補正保留中にする
         }
         else {
-            writeln("ERROR: radius compensation already set");
+            writeln("エラー: 径補正の保留中に新たに補正が設定されています");
         }
     }
     switch (CL.type) {
@@ -170,7 +170,7 @@ const Preparing = (CL) => {
 const PartingOff = (CL) => {
     writeBlock(mFormat.format(1));
 
-    CL.args.feed = 0;
+    CL.args.feed = 0; //切り落としのCLがツールパスとして出るように工具設定でFeedを0.1にしている この0.1を消すために0で上書き
     ProcessCuttingLine(CL);
 
     writeBlock(mFormat.format(91));
@@ -181,16 +181,12 @@ const PartingOff = (CL) => {
 }
 
 const ProcessBlock = (block) => {
-    let runUp;
-    let cutting;
-    let leadOut;
-    runUp = block.filter( CL => CL.movement === MOVEMENT_LINK_TRANSITION || CL.movement === MOVEMENT_CUTTING || CL.movement === MOVEMENT_LEAD_IN);
-    runUp[0] = runUp[runUp.length - 1];
-    cutting = block.filter( CL => CL.movement === MOVEMENT_FINISH_CUTTING || CL.radiusCompensation !== undefined );
-    leadOut = block.filter( CL => CL.movement === MOVEMENT_LEAD_OUT );
+    const runUp = block.filter( CL => CL.movement === MOVEMENT_LINK_TRANSITION || CL.movement === MOVEMENT_CUTTING || CL.movement === MOVEMENT_LEAD_IN);
+    const cutting = block.filter( CL => CL.movement === MOVEMENT_FINISH_CUTTING || CL.radiusCompensation !== undefined );
+    const leadOut = block.filter( CL => CL.movement === MOVEMENT_LEAD_OUT );
 
     pendingRadiusCompensation = -1;
-    Preparing(runUp[0]);
+    Preparing(runUp[runUp.length - 1]);
     for (const CL of cutting) {
         ProcessCuttingLine(CL);
     }
@@ -225,10 +221,7 @@ var onSectionEnd = () => {
             leadOutMovement = undefined;
         }
 
-        if (CL.change === 3) {
-            leadOutMovement = true;
-        }
-
+        if (CL.change === MOVEMENT_LEAD_OUT) leadOutMovement = true;
         currentBlock.push(CL);
     }
 
@@ -253,14 +246,14 @@ const sectionAmount = 2;
 const PropertyGen = () => {
     const P = {
         separateWordWithSpace: {
-            title: "SeparateWordWithSpace",
+            title: "ブロックをスペースで分けるか",
             group: "format",
             type: "boolean",
             value: true,
             default: true
         },
         useGModal: {
-            title: "Use G Modal",
+            title: "Gモーダルで出力するか",
             group: "format",
             type: "boolean",
             value: false,
@@ -289,3 +282,39 @@ const GenerateMovementTypeList = () => {
         writeln(`${movements[key]}: ${key}`);
     });
 }
+
+/*
+Fusionのポストにおける留意事項
+ PostProcesserScriptで使用されるあまたのカスタム関数が存在する
+  詳細はAutodeskのcam.autodesk.comを参照すること
+ コピペによる移植性を持たせるために、直線移動のG01についてモーダルを利用せずに都度G01と出力する
+
+Javascriptにおける留意事項
+ Number型の特徴
+  すべて浮動小数点で演算される
+  →整数の演算結果が整数でないことがある
+   解析的に処理する際には問題にならないが、比較を行うとき意図しない動作を起こしうる
+ 関数の定義方法
+  ここでは原則アロー関数を用いる
+   thisをレキシカルスコープで動作させるため　→　this一個も使わなかった！　インスタンス使わなかったからな…
+   関数の巻き上げをエラーとして扱うため　→　エントリー関数はvar宣言じゃないとPostProcessorから怒られた
+ UseStrictについて
+  まだStrictモードは適用していない
+   より正しいコードを書くことができるようになるが、
+    グローバル変数の扱われ方が変わることでのポスト処理の影響が未検討であるため保留
+
+このなぞスクコンフィグの注意点
+ 補正タイプ：制御機　進入→水平進入半径0、進入内角度0、直線進入距離0.02の、
+  直線で進入するCuttingLineがFusionから渡されることを想定しています
+  -> 進入動作は無視することにしました
+ 切り落とし動作を行いたい場合は、進入エンド距離に任意の切り落とし距離を設定した上で
+  退出送り速度に切削送り速度と異なる値を設定してください
+このなぞスクConfigのここがダメ
+ しょっちゅう想定外の条件を握りつぶしている
+  →ユーザー側の操作ミスなのか、ポストの仕様に誤りがあるのか判別がつけにくい
+ 想定（期待）しているCLの範囲が狭い　強く限定している
+  にありーいこーる　デバッグ不足
+ 進入動作や退出動作を行っているCLをかなり強引にフラグを用いて握りつぶしている
+  デバッグ用のコードをコメントアウトして残しているのでがんばること
+  できればMillingではなくFabricationのCuttingを用いたかったが、仕方なし
+*/

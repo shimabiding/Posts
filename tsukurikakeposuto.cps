@@ -224,11 +224,16 @@ var onOpen = () => {
 }
 
 var onSection = () => {
+    leadOutMovement = undefined;
     CLs = [];
 }
 
 var onSectionEnd = () => {
     cuttingZones.forEach(cz => writeln(JSON.stringify(cz)));
+    
+    if (cuttingZones.length === 0) {
+        cuttingZones.push(CLs);
+    }
 
     for (const cz of cuttingZones) {
         ProcessZone(cz);

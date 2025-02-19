@@ -5,11 +5,6 @@ extension = "nc";
 setCodePage("utf-8");
 capabilities = CAPABILITY_MILLING;
 
-minimumChordLength = spatial(0.25, MM);
-minimumCircularRadius = spatial(0.01, MM);
-maximumCircularRadius = spatial(2000, MM);
-minimumCircularSweep = toRad(0.01);
-maximumCircularSweep = toRad(359);
 allowedCircularPlanes = 1 << PLANE_XY; // set 001b by bit-shift
 
 const gFormat = createFormat({ prefix: "G", decimals: 0, zeropad: true, width: 2 });
@@ -232,7 +227,7 @@ var onSectionEnd = () => {
 
     writeln("(output blocks s)");
     blocks.forEach( block => { block.forEach( leaf => writeln(JSON.stringify(leaf)) )});
-    writeln("(output blocks f)");
+    writeln("(Processblock s)");
 
     for (const block of blocks) {
         ProcessBlock(block);
@@ -285,9 +280,10 @@ properties = PropertyGen();
 
 const GenerateMovementTypeList = () => {
     const movements = { MOVEMENT_RAPID, MOVEMENT_LEAD_IN, MOVEMENT_CUTTING, MOVEMENT_LEAD_OUT, MOVEMENT_LINK_TRANSITION, MOVEMENT_LINK_DIRECT, MOVEMENT_RAMP_HELIX, MOVEMENT_RAMP_PROFILE, MOVEMENT_RAMP_ZIG_ZAG, MOVEMENT_RAMP, MOVEMENT_PLUNGE, MOVEMENT_PREDRILL, MOVEMENT_REDUCED, MOVEMENT_FINISH_CUTTING, MOVEMENT_HIGH_FEED };
-    Object.keys(movements).forEach((key) => {
-        writeln(`${movements[key]}: ${key}`);
-    });
+    
+    for (const m in movements) {
+        writeln(movements[m] + ": " + m);
+    }
 }
 
 /*

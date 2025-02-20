@@ -59,7 +59,7 @@ const GetFeed = f => {
 
 
 var onLinear  = (...args) => {
-    const [x, y, z, f] = args;
+    const [x, y, z, f] = args; //分割代入しているだけ
     const CL = GetCL({ x, y, z, f });
     CL.type = LINEAR;
     CLs.push(CL); // ツールパスに対応するEntryFunctionがInvokeされたときに引数をもとに宣言したCLをCLsに積み上げる
@@ -78,7 +78,6 @@ var onRadiusCompensation = () => {
 
 leadOutMovement = undefined;
 var onMovement = () => {
-    writeln(leadOutMovement);
     if (leadOutMovement) {
         cuttingZones.push(CLs);
         CLs = [];
@@ -101,7 +100,7 @@ const ProcessLinear = CL => {
     const f = GetFeed(CL.args.feed);
 
     if (x || y) {
-        if (pendingRadiusCompensation >= 0) {
+        if (pendingRadiusCompensation >= 0) { //径補正が保留中であれば補正を処理した上で保留を解除する
             switch (pendingRadiusCompensation) {
                 case RADIUS_COMPENSATION_LEFT:
                     writeBlock(gFormat.format(41), x, y, f);
@@ -226,6 +225,7 @@ var onOpen = () => {
 var onSection = () => {
     leadOutMovement = undefined;
     CLs = [];
+    cuttingZones = [];
 }
 
 var onSectionEnd = () => {
@@ -237,7 +237,6 @@ var onSectionEnd = () => {
 
     for (const cz of cuttingZones) {
         ProcessZone(cz);
-        cz.forEach(zone => writeln(JSON.stringify(zone)));
         globalIndex++;
     }
 }
@@ -281,6 +280,8 @@ const PropertyGen = () => {
     return P;
 }
 
+properties = PropertyGen();
+
 const GenerateMovementTypeList = () => {
     const movements = [
         "MOVEMENT_RAPID",
@@ -304,3 +305,40 @@ const GenerateMovementTypeList = () => {
         writeln(movements[m] + ": " + m);
     }
 }
+
+
+/*
+Fusionのポストにおける留意事項
+ PostProcesserScriptで使用されるあまたのカスタム関数が存在する
+  詳細はAutodeskのcam.autodesk.comを参照すること
+ コピペによる移植性を持たせるために、直線移動のG01についてモーダルを利用せずに都度G01と出力する
+
+Javascriptにおける留意事項
+ Number型の特徴
+  すべて浮動小数点で演算される
+  →整数の演算結果が整数でないことがある
+   解析的に処理する際には問題にならないが、比較を行うとき意図しない動作を起こしうる
+ 関数の定義方法
+  ここでは原則アロー関数を用いる
+   thisをレキシカルスコープで動作させるため　→　this一個も使わなかった！　インスタンス使わなかったからな…
+   関数の巻き上げをエラーとして扱うため　→　エントリー関数はvar宣言じゃないとPostProcessorから怒られた
+ UseStrictについて
+  まだStrictモードは適用していない
+   より正しいコードを書くことができるようになるが、
+    グローバル変数の扱われ方が変わることでのポスト処理の影響が未検討であるため保留
+
+このなぞスクコンフィグの注意点
+ 補正タイプ：制御機　進入→水平進入半径0、進入内角度0、直線進入距離0.02の、
+  直線で進入するCuttingLineがFusionから渡されることを想定しています
+  -> 進入動作は無視することにしました
+ 切り落とし動作を行いたい場合は、進入エンド距離に任意の切り落とし距離を設定した上で
+  退出送り速度に切削送り速度と異なる値を設定してください
+このなぞスクConfigのここがダメ
+ しょっちゅう想定外の条件を握りつぶしている
+  →ユーザー側の操作ミスなのか、ポストの仕様に誤りがあるのか判別がつけにくい
+ 想定（期待）しているCLの範囲が狭い　強く限定している
+  にありーいこーる　デバッグ不足
+ 進入動作や退出動作を行っているCLをかなり強引にフラグを用いて握りつぶしている
+  デバッグ用のコードをコメントアウトして残しているのでがんばること
+  できればMillingではなくFabricationのCuttingを用いたかったが、仕方なし
+*/

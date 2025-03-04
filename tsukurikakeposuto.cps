@@ -54,7 +54,7 @@ const GetCL = args => {
 }
 
 const GetFeed = f => {
-    return f ? feedFormat.format(f) : "";
+    return f ? feedOutput.format(f) : "";
 }
 
 
@@ -97,7 +97,7 @@ const ProcessLinear = CL => {
 
     const x = xOutput.format(CL.args.x);
     const y = yOutput.format(CL.args.y);
-    const f = GetFeed(CL.args.feed);
+    const f = GetFeed(CL.args.f);
 
     if (x || y) {
         if (pendingRadiusCompensation >= 0) { //径補正が保留中であれば補正を処理した上で保留を解除する
@@ -114,7 +114,7 @@ const ProcessLinear = CL => {
             pendingRadiusCompensation = -1;
         }
         else {
-            writeBlock(gFormat.format(1), x, y, f);
+            writeBlock(gMotionModal.format(1), x, y, f);
         }
     }
 }
@@ -135,7 +135,8 @@ const ProcessCircular = CL => {
     const y = yOutput.format(CL.args.y);
     const i = iOutput.format(CL.args.cx - CL.start.x);
     const j = jOutput.format(CL.args.cy - CL.start.y);
-    const f = GetFeed(CL.args.feed);
+    const f = GetFeed(CL.args.f);
+
     writeBlock(gFormat.format(CL.args.clockwise ? 2 : 3), x, y, i, j, f);
 }
 
@@ -169,38 +170,37 @@ const Preparing = CL => {
     initPos.y = yOutput.format(CL.args.y);
 
     if (globalIndex > 1) {
-        writeBlock(gFormat.format(1), initPos.x, initPos.y, feedOutput.format(800.));
+        if (getProperty("rapidOnReachedStart", false)) writeBlock(gFormat.format(40), gFormat.format(0), initPos.x, initPos.y, feedOutput.format(800.));
+        else writeBlock(gFormat.format(40), gFormat.format(1), initPos.x, initPos.y, feedOutput.format(800.));
+        if (getProperty("stopOnReachedStart", false)) writeBlock(mFormat.format(0));
     }
 
-    writeln("(Zone: " + globalIndex + ")");
-    writeBlock(mFormat.format(78));
-    writeBlock(mFormat.format(78));
-    writeBlock(mFormat.format(80));
-    writeBlock(mFormat.format(82));
-    writeBlock(mFormat.format(84));
-    writeBlock(gFormat.format(90));
+    writeln(" (Zone: " + globalIndex + ")" );
+    writeBlock(mFormat.format(78), mFormat.format(78));
+    writeBlock(mFormat.format(80), mFormat.format(82), mFormat.format(84));
+    writeBlock(gFormat.format(90), mFormat.format(90));
     writeBlock(gFormat.format(92), initPos.x, initPos.y);
-    writeBlock(mFormat.format(90));
     forceAny();
 }
 
 const PartingOff = CL => {
     writeBlock(mFormat.format(1));
 
-    CL.args.f = 0; //切り落としをツールパスとして出力させるために工具設定でF0.1にしている 0.1をそのまま出さないために上書き
+    CL.args.f = undefined; //切り落としをツールパスとして出力させるために工具設定でF0.1にしている 0.1をそのまま出さないために上書き
     ProcessCuttingLine(CL);
 
     writeBlock(mFormat.format(91));
-    writeBlock(gFormat.format(0));
+    writeBlock(mFormat.format(0));
 
     forceAny();
-    writeBlock(gFormat.format(40), initPos.x, initPos.y, feedOutput.format(500.));
+
+    if (getProperty("backToStartPosAfterCutting", false)) writeBlock(gFormat.format(40), initPos.x, initPos.y, feedOutput.format(500.));
 }
 
-const ProcessZone = cz => {
-    const runUp = cz.filter(zone => zone.movement === MOVEMENT_LINK_TRANSITION || zone.movement === MOVEMENT_CUTTING || zone.movement === MOVEMENT_LEAD_IN);
-    const cutting = cz.filter(zone => zone.movement === MOVEMENT_FINISH_CUTTING || zone.radiusCompensation !== undefined);
-    const leadOut = cz.filter(zone => zone.movement === MOVEMENT_LEAD_OUT);
+const ProcessZone = zone => {
+    const runUp = zone.filter(zone => zone.movement === MOVEMENT_LINK_TRANSITION || zone.movement === MOVEMENT_CUTTING || zone.movement === MOVEMENT_LEAD_IN);
+    const cutting = zone.filter(zone => zone.movement === MOVEMENT_FINISH_CUTTING || zone.radiusCompensation !== undefined);
+    const leadOut = zone.filter(zone => zone.movement === MOVEMENT_LEAD_OUT);
 
     pendingRadiusCompensation = -1;
     Preparing(runUp[runUp.length - 1]);
@@ -213,10 +213,10 @@ const ProcessZone = cz => {
 
 
 var onOpen = () => {
-    if (getProperty("separateWordWithSpace"), true) setWordSeparator(" ");
+    if (getProperty("separateWordWithSpace", false)) setWordSeparator(" ");
     else setWordSeparator("");
 
-    if (getProperty("useGModal"), false) gMotionModal = createModal(gFormat);
+    if (getProperty("useGModal", false)) gMotionModal = createModal(gFormat);
     else gMotionModal = createModal({ force: true }, gFormat);
 
     writeln("%");
@@ -229,14 +229,14 @@ var onSection = () => {
 }
 
 var onSectionEnd = () => {
-    cuttingZones.forEach(cz => writeln(JSON.stringify(cz)));
+    //cuttingZones.forEach(zone => writeln(JSON.stringify(zone)));
     
     if (cuttingZones.length === 0) {
         cuttingZones.push(CLs);
     }
 
-    for (const cz of cuttingZones) {
-        ProcessZone(cz);
+    for (const zone of cuttingZones) {
+        ProcessZone(zone);
         globalIndex++;
     }
 }
@@ -250,13 +250,13 @@ var onClose = () => {
 
 const sectionAmount = 2;
 
-const PropertyGen = () => {
-    const P = {
+properties = {    
         separateWordWithSpace: {
             title: "ブロックをスペースで分けるか",
             group: "format",
             type: "boolean",
-            value: true,
+            value: false,
+            default: false
         },
         useGModal: {
             title: "Gコードをモーダルで出力するか",
@@ -264,23 +264,40 @@ const PropertyGen = () => {
             type: "boolean",
             value: false,
             default: false
+        },
+        backToStartPosAfterCutting: {
+            title: "切り落とし後にスタート位置へ戻るか",
+            group: "act",
+            type: "boolean",
+            value: false,
+            default: false
+        },
+        rapidOnReachedStart: {
+            title: "スタート位置への移動を早送りするか",
+            group: "act",
+            type: "boolean",
+            value: false,
+            default: false
+        },
+        stopOnReachedStart: {
+            title: "スタート位置への移動完了時にストップするか",
+            group: "act",
+            type: "boolean",
+            value: false,
+            default: false
         }
-    }
+    };
 
-    for (let i = 0; i < sectionAmount; i++) {
-        P[`section${i}`] = {
-            group: `Section ${i}`,
-            title: "doukana",
-            type: "number",
-            value: 0,
-            default: 0
-        }
-    }
-
-    return P;
+for (let i = 0; i < sectionAmount; i++) {
+    properties[`section${i}`] = {
+        group: `Section ${i}`,
+        title: "doukana",
+        type: "number",
+        value: 0,
+        default: 0
+    };
 }
 
-properties = PropertyGen();
 
 const GenerateMovementTypeList = () => {
     const movements = [
